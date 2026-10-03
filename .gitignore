@@ -1,0 +1,12 @@
+# Build output (build.ps1 / package.ps1). release/ is committed on purpose.
+bin/
+obj/
+*.o
+*.res
+
+# Editor / OS clutter
+.vs/
+.vscode/
+*.user
+Thumbs.db
+Desktop.ini

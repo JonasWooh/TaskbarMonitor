@@ -1,0 +1,31 @@
+1 24 "app.manifest"  // RT_MANIFEST
+
+// Application icon (res\make_icon.ps1). The lowest ID is what Explorer shows.
+1 ICON "app.ico"
+
+// PawnIO module (LGPL-2.1, https://github.com/namazso/PawnIO.Modules), signed blob.
+// Path is relative to the repository root, where build.ps1 runs windres.
+INTELMSR RCDATA "third_party/pawnio-modules/IntelMSR.bin"
+
+1 VERSIONINFO
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404b0"
+    BEGIN
+      VALUE "FileDescription", "Taskbar Monitor"
+      VALUE "FileVersion", "1.1.0"
+      VALUE "ProductName", "TaskbarMonitor"
+      VALUE "ProductVersion", "1.1.0"
+      VALUE "LegalCopyright", "PawnIO module: LGPL-2.1 (namazso)"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x804, 1200
+  END
+END
