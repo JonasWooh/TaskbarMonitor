@@ -13,9 +13,7 @@
 
 TaskbarMonitor shows CPU, GPU, memory and network figures in the empty space just left of the tray's `^` button and refreshes them once per second. Click it for a Windows 11–style flyout with 60-second history charts, or click the network figures to see which programs are using your bandwidth.
 
-It is a single ~115 KB executable written in plain C++/Win32. At idle it uses about 0.006% of the CPU and a few MB of RAM.
-
-> The user interface is in Simplified Chinese.
+It is a single ~120 KB executable written in plain C++/Win32. At idle it uses about 0.006% of the CPU and a few MB of RAM.
 
 ## Features
 
@@ -24,16 +22,15 @@ It is a single ~115 KB executable written in plain C++/Win32. At idle it uses ab
 - **Per-process network view (click the network figures):** download and upload ranking per program. Processes running the same executable are merged, e.g. `chrome.exe (5)`.
 - **Gets out of the way:** when task buttons fill the taskbar, the strip gives up whole groups (GPU → memory → network → CPU) and finally hides. It comes back by itself once there is room. It also avoids the Widgets button on left-aligned taskbars.
 - **Tray icon:** left click opens the flyout, right click opens the menu with Exit. You can always reach it, even while the strip is hidden.
+- **English and Chinese UI:** follows the Windows display language by default. Switch any time with right-click → **Language / 语言** (Same as Windows / 简体中文 / English); open windows switch immediately and the choice is remembered.
 - **Theme and layout aware:** follows light/dark mode, DPI changes, tray width changes, and Explorer restarts.
 - **Start with Windows:** when running elevated, this creates a "highest privileges" logon task, so temperature and power work at sign-in without a UAC prompt.
 
-| Overview (light) | Overview (dark) |
-|---|---|
-| ![Overview flyout, light theme](docs/images/panel-overview.png) | ![Overview flyout, dark theme](docs/images/panel-overview-dark.png) |
+![Details flyout](docs/images/en-panel-overview.png)
 
 | Network activity per program | Display items |
 |---|---|
-| ![Per-process network view](docs/images/panel-network.png) | ![Display items window](docs/images/settings.png) |
+| ![Per-process network view](docs/images/en-panel-network.png) | ![Display items window](docs/images/en-settings.png) |
 
 When the taskbar runs out of room, the strip collapses instead of covering task buttons. Top image: normal. Bottom image: 17 extra windows open, so the GPU group has been given up.
 
@@ -52,19 +49,20 @@ When the taskbar runs out of room, the strip collapses instead of covering task 
 2. Run it. The strip appears left of the tray's `^` button.
 3. For CPU temperature and power:
    1. Install [PawnIO](https://github.com/namazso/PawnIO.Setup/releases/latest).
-   2. Right-click the strip and choose **以管理员身份重启** (restart as administrator).
-   3. Tick **开机自动启动** (start with Windows) while elevated, so it starts that way at every sign-in without a prompt.
+   2. Right-click the strip and choose **Restart as administrator**.
+   3. Tick **Start with Windows** while elevated, so it starts that way at every sign-in without a prompt.
 
 | Action | Result |
 |---|---|
 | Left click the strip | Details flyout; click outside or press Esc to close |
 | Left click the network figures | Per-process network flyout |
-| Right click the strip or tray icon | Menu: details, Task Manager, display items, start with Windows, exit |
+| Right click the strip or tray icon | Menu: details, Task Manager, display items, start with Windows, language, exit |
 | `TaskbarMonitor.exe /show` | Toggle the details flyout of the running instance (bind it to a hotkey) |
 | `TaskbarMonitor.exe /show network` | Toggle the network flyout |
+| `TaskbarMonitor.exe /lang en` / `zh` / `auto` | Switch the running instance's UI language |
 | `TaskbarMonitor.exe /replace` | Replace a running instance (also an elevated one) with this executable |
 
-Display-item choices are stored in `HKCU\Software\TaskbarMonitor`.
+Display items and language are stored in `HKCU\Software\TaskbarMonitor`.
 
 ## Resource usage
 
@@ -115,6 +113,7 @@ You need [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw) (`winget install M
 │  ├─ metrics.cpp          PDH, NVML, memory, network, PawnIO sensors
 │  ├─ netproc.cpp          per-process network (ETW)
 │  ├─ tbspace.cpp          taskbar occupancy (UI Automation)
+│  ├─ lang.cpp             English / Chinese strings
 │  └─ pawnio.cpp, format.cpp, *.h
 ├─ res/                    icon, manifest, resource script, icon generator
 ├─ third_party/
@@ -130,7 +129,6 @@ You need [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw) (`winget install M
 - The strip only attaches to the taskbar on the primary monitor.
 - CPU temperature and power are implemented for Intel CPUs only.
 - GPU metrics need an NVIDIA GPU.
-- The UI is Simplified Chinese only.
 
 ## Acknowledgements
 

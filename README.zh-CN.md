@@ -13,7 +13,7 @@
 
 TaskbarMonitor 在托盘 `^` 按钮左侧的空白处显示 CPU、GPU、内存和网速，每秒刷新。左键点击会弹出 Win11 风格的详情面板，带 60 秒历史图；点网速那一块可以看各个程序分别占了多少网速。
 
-它是一个约 115 KB 的单文件 exe，纯 C++/Win32 实现。平时约占整颗 CPU 的 0.006%，内存只有几 MB。
+它是一个约 120 KB 的单文件 exe，纯 C++/Win32 实现。平时约占整颗 CPU 的 0.006%，内存只有几 MB。
 
 ## 功能
 
@@ -28,16 +28,17 @@ TaskbarMonitor 在托盘 `^` 按钮左侧的空白处显示 CPU、GPU、内存�
 - **按进程统计网速（点网速区域）**：按程序列出下载和上传排行，同一程序的多个进程会合并显示，例如 `chrome.exe (5)`。
 - **主动让位**：任务栏按钮挤满时，按 GPU → 内存 → 网络 → CPU 的顺序逐组收起，放不下就整体隐藏，空间够了再自动恢复。任务栏左对齐时，"小组件"按钮也会被避让。
 - **托盘图标**：左键打开面板，右键菜单里有"退出"。即使指标条被收起，也随时能操作。
+- **中英文界面**：默认跟随 Windows 显示语言，也可以右键 → "语言 / Language" 手动切换（跟随系统 / 简体中文 / English），已打开的窗口即时切换，选择会记住。
 - **自适应**：跟随深浅色、DPI、托盘宽度变化，Explorer 重启后会自动重新挂载。
 - **开机自启**：在管理员模式下勾选，会创建"最高权限"的登录计划任务，开机后直接显示温度和功耗，不弹 UAC。
 
 | 总览（浅色） | 总览（深色） |
 |---|---|
-| ![浅色详情面板](docs/images/panel-overview.png) | ![深色详情面板](docs/images/panel-overview-dark.png) |
+| ![浅色详情面板](docs/images/zh-panel-overview.png) | ![深色详情面板](docs/images/zh-panel-overview-dark.png) |
 
 | 按程序的网络活动 | 显示项目 |
 |---|---|
-| ![网络进程排行](docs/images/panel-network.png) | ![显示项目设置](docs/images/settings.png) |
+| ![网络进程排行](docs/images/zh-panel-network.png) | ![显示项目设置](docs/images/zh-settings.png) |
 
 任务栏空间不够时，指标条会收起，不会盖住任务栏按钮。上图是正常状态；下图多开了 17 个窗口，GPU 组已经收起。
 
@@ -63,12 +64,13 @@ TaskbarMonitor 在托盘 `^` 按钮左侧的空白处显示 CPU、GPU、内存�
 |---|---|
 | 左键点指标条 | 打开详情面板；点外面或按 Esc 关闭 |
 | 左键点网速区域 | 打开网络活动面板 |
-| 右键指标条或托盘图标 | 菜单：性能详情、任务管理器、显示项目、开机自动启动、退出 |
+| 右键指标条或托盘图标 | 菜单：性能详情、任务管理器、显示项目、开机自动启动、语言、退出 |
 | `TaskbarMonitor.exe /show` | 切换正在运行实例的详情面板（可以绑定到快捷键） |
 | `TaskbarMonitor.exe /show network` | 切换网络面板 |
+| `TaskbarMonitor.exe /lang en` / `zh` / `auto` | 切换正在运行实例的界面语言 |
 | `TaskbarMonitor.exe /replace` | 用这个 exe 接管正在运行的实例（管理员权限的也可以） |
 
-显示项目的选择保存在 `HKCU\Software\TaskbarMonitor`。
+显示项目和语言保存在 `HKCU\Software\TaskbarMonitor`。
 
 ## 资源占用
 
@@ -134,7 +136,6 @@ TaskbarMonitor 在托盘 `^` 按钮左侧的空白处显示 CPU、GPU、内存�
 - 只挂在主显示器的任务栏上。
 - CPU 温度和功耗目前只支持 Intel。
 - GPU 指标需要 NVIDIA 显卡。
-- 界面只有简体中文。
 
 ## 致谢
 

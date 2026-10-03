@@ -8,6 +8,7 @@
 
 #include "app.h"
 #include "format.h"
+#include "lang.h"
 
 namespace panel {
 namespace {
@@ -292,28 +293,27 @@ int CpuSection(HDC dc, int x, int y, int w, int chartH) {
     FmtPct(util, m.cpuUtil); FmtGHz(freq, m.cpuMHz); FmtTemp(temp, m.cpuTemp); FmtWatt(power, m.cpuPower);
     const wchar_t* why = nullptr;  // why temperature/power are missing
     switch (g_hwState) {
-        case HwSensorState::NotInstalled: why = L"需 PawnIO 驱动"; break;           // 需 PawnIO 驱动
-        case HwSensorState::NeedsAdmin: why = L"需管理员权限"; break;   // 需管理员权限
-        case HwSensorState::Unsupported: why = L"此 CPU 不支持"; break;         // 此 CPU 不支持
+        case HwSensorState::NotInstalled: why = T(Str::WhyPawnIo); break;
+        case HwSensorState::NeedsAdmin: why = T(Str::WhyAdmin); break;
+        case HwSensorState::Unsupported: why = T(Str::WhyUnsupported); break;
         case HwSensorState::Ok: break;
     }
-    if (why && m.cpuTemp < 0) wcscpy(temp, why);
-    if (why && m.cpuPower < 0) wcscpy(power, why);
+    if (why && m.cpuTemp < 0) wcsncpy(temp, why, 15), temp[15] = 0;
+    if (why && m.cpuPower < 0) wcsncpy(power, why, 15), power[15] = 0;
     wcscpy(name, g_collector.CpuName());
     for (size_t n = wcslen(name); n && name[n - 1] == L' '; --n) name[n - 1] = 0;
     SectionHead(dc, x, y, w, L"CPU", name, util, g_pal.accent);
     int cy = y + S(kSecHeadH + kChartGap);
     PercentChart(dc, x, cy, w, chartH, g_snap.hist[H_CPU]);
     cy += chartH + S(kStatsGap);
-    const Stat st[] = {{L"频率", freq}, {L"温度", temp}, {L"功耗", power}};  // 频率 温度 功耗
+    const Stat st[] = {{T(Str::Freq), freq}, {T(Str::Temp), temp}, {T(Str::Power), power}};
     Stats(dc, x, cy, w, st, 3);
     cy += S(kStatsH + kCoresGap);
 
-    // 逻辑处理器负载 · N
     wchar_t label[64];
-    swprintf(label, 64, L"逻辑处理器负载 · %d", m.coreCount);
-    Text(dc, g_f.caption, g_pal.text2, m.coreCount ? label : L"逻辑处理器负载",
-         {x, cy, x + w, cy + S(kCoresLabelH)}, DT_LEFT);
+    if (m.coreCount) swprintf(label, 64, L"%ls · %d", T(Str::Cores), m.coreCount);
+    else wcscpy(label, T(Str::Cores));
+    Text(dc, g_f.caption, g_pal.text2, label, {x, cy, x + w, cy + S(kCoresLabelH)}, DT_LEFT);
     cy += S(kCoresLabelH);
     const int n = m.coreCount;
     if (n > 0) {
@@ -341,13 +341,12 @@ int GpuSection(HDC dc, int x, int y, int w, int chartH) {
         swprintf(vram, 40, L"%.1f/%ls", m.gpuMemUsedGB, total);
     else
         wcscpy(vram, used);
-    const wchar_t* name = g_collector.GpuName()[0] ? g_collector.GpuName() : L"未检测到 NVIDIA 显卡";
+    const wchar_t* name = g_collector.GpuName()[0] ? g_collector.GpuName() : T(Str::NoGpu);
     SectionHead(dc, x, y, w, L"GPU", name, util, g_pal.accent);
     int cy = y + S(kSecHeadH + kChartGap);
     PercentChart(dc, x, cy, w, chartH, g_snap.hist[H_GPU]);
     cy += chartH + S(kStatsGap);
-    // 频率 温度 功耗 显存
-    const Stat st[] = {{L"频率", freq}, {L"温度", temp}, {L"功耗", power}, {L"显存", vram}};
+    const Stat st[] = {{T(Str::Freq), freq}, {T(Str::Temp), temp}, {T(Str::Power), power}, {T(Str::Vram), vram}};
     Stats(dc, x, cy, w, st, 4);
     return cy + S(kStatsH);
 }
@@ -360,32 +359,29 @@ int MemorySection(HDC dc, int x, int y, int w, int chartH) {
     FmtGB(cu, m.commitUsedGB); FmtGB(cl, m.commitLimitGB);
     swprintf(sub, 48, L"%ls / %ls", used, total);
     swprintf(commit, 40, L"%ls / %ls", cu, cl);
-    SectionHead(dc, x, y, w, L"内存", sub, util, g_pal.accent);  // 内存
+    SectionHead(dc, x, y, w, T(Str::Memory), sub, util, g_pal.accent);
     int cy = y + S(kSecHeadH + kChartGap);
     PercentChart(dc, x, cy, w, chartH, g_snap.hist[H_MEM]);
     cy += chartH + S(kStatsGap);
-    // 已用 可用 已提交
-    const Stat st[] = {{L"已用", used}, {L"可用", avail}, {L"已提交", commit}};
+    const Stat st[] = {{T(Str::InUse), used}, {T(Str::Available), avail}, {T(Str::Committed), commit}};
     Stats(dc, x, cy, w, st, 3);
     return cy + S(kStatsH);
 }
 
 int DiskSection(HDC dc, int x, int y, int w, int chartH) {
     const Metrics& m = g_snap.m;
-    wchar_t rd[16], wr[16], big[24], bigSub[24];
+    wchar_t rd[16], wr[16], big[32], bigSub[32];
     FmtRate(rd, m.diskRead); FmtRate(wr, m.diskWrite);
-    swprintf(big, 24, L"读 %ls", rd);     // 读
-    swprintf(bigSub, 24, L"写 %ls", wr);  // 写
-    SectionHead(dc, x, y, w, L"磁盘", L"所有物理磁盘", big, g_pal.accent, bigSub,
-                g_pal.accent2);  // 磁盘 / 所有物理磁盘
+    swprintf(big, 32, T(Str::ReadFmt), rd);
+    swprintf(bigSub, 32, T(Str::WriteFmt), wr);
+    SectionHead(dc, x, y, w, T(Str::Disk), T(Str::AllDisks), big, g_pal.accent, bigSub, g_pal.accent2);
     int cy = y + S(kSecHeadH + kChartGap);
     MirrorChart(dc, x, cy, w, chartH, g_snap.hist[H_DISK_R], g_snap.hist[H_DISK_W]);
     cy += chartH + S(kStatsGap);
     wchar_t peakR[16], peakW[16];
     FmtRate(peakR, g_snap.hist[H_DISK_R].Max());
     FmtRate(peakW, g_snap.hist[H_DISK_W].Max());
-    // 读取峰值 写入峰值 (60 秒)
-    const Stat st[] = {{L"读取峰值 (60 秒)", peakR}, {L"写入峰值 (60 秒)", peakW}};
+    const Stat st[] = {{T(Str::ReadPeak), peakR}, {T(Str::WritePeak), peakW}};
     Stats(dc, x, cy, w, st, 2);
     return cy + S(kStatsH);
 }
@@ -396,43 +392,35 @@ int NetworkSection(HDC dc, int x, int y, int w, int chartH, bool withLink) {
     FmtRate(down, m.netDown); FmtRate(up, m.netUp);
     swprintf(big, 24, L"↓ %ls", down);
     swprintf(bigSub, 24, L"↑ %ls", up);
-    SectionHead(dc, x, y, w, L"网络", L"物理网卡合计", big, g_pal.accent, bigSub,
-                g_pal.accent2);  // 网络 / 物理网卡合计
+    SectionHead(dc, x, y, w, T(Str::Network), T(Str::AllAdapters), big, g_pal.accent, bigSub, g_pal.accent2);
     int cy = y + S(kSecHeadH + kChartGap);
     MirrorChart(dc, x, cy, w, chartH, g_snap.hist[H_NET_DOWN], g_snap.hist[H_NET_UP]);
     cy += chartH + S(kStatsGap);
     wchar_t peakD[16], peakU[16];
     FmtRate(peakD, g_snap.hist[H_NET_DOWN].Max());
     FmtRate(peakU, g_snap.hist[H_NET_UP].Max());
-    // 下载峰值 上传峰值
-    const Stat st[] = {{L"下载峰值", peakD}, {L"上传峰值", peakU}};
+    const Stat st[] = {{T(Str::DownPeak), peakD}, {T(Str::UpPeak), peakU}};
     Stats(dc, x, cy, withLink ? w * 2 / 3 : w, st, 2);
-    if (withLink)  // 按进程查看 ›
-        Link(dc, x + w, cy + S(10), S(20), L"按进程查看 ›", HIT_NETWORK);
+    if (withLink) Link(dc, x + w, cy + S(10), S(20), T(Str::ByProcess), HIT_NETWORK);
     return cy + S(kStatsH);
 }
 
 void ProcessList(HDC dc, int x, int y, int w) {
     const int upW = S(78), downW = S(78), colGap = S(8);
     const int upL = x + w - upW, downL = upL - colGap - downW, nameL = x + S(26), nameR = downL - colGap;
-    // 进程 下载 上传
-    Text(dc, g_f.caption, g_pal.text2, L"进程", {x, y, nameR, y + S(kListHeadH)}, DT_LEFT);
-    Text(dc, g_f.caption, g_pal.text2, L"下载", {downL, y, downL + downW, y + S(kListHeadH)}, DT_RIGHT);
-    Text(dc, g_f.caption, g_pal.text2, L"上传", {upL, y, x + w, y + S(kListHeadH)}, DT_RIGHT);
+    Text(dc, g_f.caption, g_pal.text2, T(Str::Process), {x, y, nameR, y + S(kListHeadH)}, DT_LEFT);
+    Text(dc, g_f.caption, g_pal.text2, T(Str::Download), {downL, y, downL + downW, y + S(kListHeadH)}, DT_RIGHT);
+    Text(dc, g_f.caption, g_pal.text2, T(Str::Upload), {upL, y, x + w, y + S(kListHeadH)}, DT_RIGHT);
     y += S(kListHeadH);
 
     const wchar_t* message = nullptr;
     switch (g_snap.netState) {
-        case netproc::State::NeedsAdmin:  // 按进程统计需要以管理员身份运行
-            message = L"按进程统计需要以管理员身份运行";
-            break;
-        case netproc::State::Failed:  // 无法启动网络事件跟踪
-            message = L"无法启动网络事件跟踪";
-            break;
+        case netproc::State::NeedsAdmin: message = T(Str::NeedsAdmin); break;
+        case netproc::State::Failed: message = T(Str::EtwFailed); break;
         case netproc::State::Off:
         case netproc::State::Running:
-            if (!g_snap.topValid) message = L"正在统计…";  // 正在统计…
-            else if (!g_snap.topCount) message = L"暂无网络活动";  // 暂无网络活动
+            if (!g_snap.topValid) message = T(Str::Collecting);
+            else if (!g_snap.topCount) message = T(Str::NoActivity);
             break;
     }
     if (message) {
@@ -462,9 +450,9 @@ void ProcessList(HDC dc, int x, int y, int w) {
 
 void PaintOverview(HDC dc, int w) {
     const int x0 = S(kPad), top = S(kPad);
-    Text(dc, g_f.title, g_pal.text, L"性能监控", {x0, top, w / 2, top + S(kHeaderH)}, DT_LEFT);  // 性能监控
-    int lx = Link(dc, w - S(kPad), top, S(kHeaderH), L"任务管理器", HIT_TASKMGR);  // 任务管理器
-    Link(dc, lx - S(16), top, S(kHeaderH), L"显示项目", HIT_SETTINGS);  // 显示项目
+    Text(dc, g_f.title, g_pal.text, T(Str::PanelTitle), {x0, top, w / 2, top + S(kHeaderH)}, DT_LEFT);
+    int lx = Link(dc, w - S(kPad), top, S(kHeaderH), T(Str::PanelTaskMgr), HIT_TASKMGR);
+    Link(dc, lx - S(16), top, S(kHeaderH), T(Str::PanelSettings), HIT_SETTINGS);
 
     const int y0 = top + S(kHeaderH + kHeaderGap);
     const int colW = S(kColW);
@@ -489,8 +477,8 @@ void PaintOverview(HDC dc, int w) {
 
 void PaintNetwork(HDC dc, int w) {
     const int x0 = S(kPad), top = S(kPad), cw = w - 2 * S(kPad);
-    Text(dc, g_f.title, g_pal.text, L"网络活动", {x0, top, w / 2, top + S(kHeaderH)}, DT_LEFT);  // 网络活动
-    Link(dc, w - S(kPad), top, S(kHeaderH), L"‹ 总览", HIT_OVERVIEW);  // ‹ 总览
+    Text(dc, g_f.title, g_pal.text, T(Str::NetTitle), {x0, top, w / 2, top + S(kHeaderH)}, DT_LEFT);
+    Link(dc, w - S(kPad), top, S(kHeaderH), T(Str::Back), HIT_OVERVIEW);
     int y = NetworkSection(dc, x0, top + S(kHeaderH + kHeaderGap), cw, S(kNetChartH), false);
     Divider(dc, x0, y, cw);
     ProcessList(dc, x0, y + S(kDivGap), cw);
@@ -618,8 +606,7 @@ void Open(Mode mode) {
     const RECT r = PanelRect(PanelSize());
     // WS_EX_APPWINDOW: a taskbar button while the panel is open, so it is
     // visible (and closable from the taskbar) like any other window.
-    // 任务栏性能监控
-    g_wnd = CreateWindowExW(WS_EX_APPWINDOW | WS_EX_TOPMOST, kClass, L"任务栏性能监控",
+    g_wnd = CreateWindowExW(WS_EX_APPWINDOW | WS_EX_TOPMOST, kClass, T(Str::AppName),
                             WS_POPUP | WS_SYSMENU, r.left, r.top, r.right - r.left, r.bottom - r.top, g_host, nullptr,
                             g_inst, nullptr);
     if (!g_wnd) {

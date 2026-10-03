@@ -8,8 +8,8 @@
 INTELMSR RCDATA "third_party/pawnio-modules/IntelMSR.bin"
 
 1 VERSIONINFO
-FILEVERSION 1,1,0,0
-PRODUCTVERSION 1,1,0,0
+FILEVERSION 1,2,0,0
+PRODUCTVERSION 1,2,0,0
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -18,9 +18,9 @@ BEGIN
     BLOCK "080404b0"
     BEGIN
       VALUE "FileDescription", "Taskbar Monitor"
-      VALUE "FileVersion", "1.1.0"
+      VALUE "FileVersion", "1.2.0"
       VALUE "ProductName", "TaskbarMonitor"
-      VALUE "ProductVersion", "1.1.0"
+      VALUE "ProductVersion", "1.2.0"
       VALUE "LegalCopyright", "PawnIO module: LGPL-2.1 (namazso)"
     END
   END

@@ -14,6 +14,7 @@
 
 #include "app.h"
 #include "format.h"
+#include "lang.h"
 #include "netproc.h"
 #include "panel.h"
 #include "tbspace.h"
@@ -48,11 +49,14 @@ constexpr UINT WM_APP_TRAY = WM_APP + 2;  // notification-area icon callback
 constexpr UINT kTrayId = 1;
 constexpr DWORD kIntervalMs = 1000;
 
-enum MenuId { ID_TASKMGR = 1, ID_DETAILS, ID_SETTINGS, ID_PAWNIO, ID_ELEVATE, ID_AUTOSTART, ID_EXIT };
+enum MenuId {
+    ID_TASKMGR = 1, ID_DETAILS, ID_SETTINGS, ID_PAWNIO, ID_ELEVATE, ID_AUTOSTART, ID_EXIT,
+    ID_LANG_AUTO, ID_LANG_ZH, ID_LANG_EN,  // same order as Lang
+};
 
 HWND g_strip;
 bool g_stripHidden;  // collapsed away because the taskbar has no room
-UINT g_msgTaskbarCreated, g_msgQuit, g_msgShow, g_msgShellHook;
+UINT g_msgTaskbarCreated, g_msgQuit, g_msgShow, g_msgLang, g_msgShellHook;
 HANDLE g_mutex, g_stopEvent, g_wakeEvent, g_worker;
 
 }  // namespace
@@ -196,25 +200,32 @@ struct ItemDef {
     int group;
     const wchar_t* prefix;  // drawn left-aligned in the cell, e.g. the network arrows
     const wchar_t* tmpl;    // worst-case value, fixes the cell width
-    const wchar_t* name;    // settings window label
+    Str name;               // settings window label
 };
 const ItemDef kItems[IT_COUNT] = {
-    {0, L"", L"100%", L"利用率"},           // 利用率
-    {0, L"", L"100°C", L"温度"},           // 温度
-    {0, L"", L"8.88 GHz", L"频率"},             // 频率
-    {0, L"", L"888 W", L"功耗"},                // 功耗
-    {1, L"", L"100%", L"利用率"},
-    {1, L"", L"100°C", L"温度"},
-    {1, L"", L"8.88 GHz", L"频率"},
-    {1, L"", L"888 W", L"功耗"},
-    {2, L"", L"100%", L"占用率"},           // 占用率
-    {2, L"", L"88.8 GB", L"已用容量"},  // 已用容量
-    {3, L"↑", L"9.99 MB/s", L"上传"},      // 上传
-    {3, L"↓", L"9.99 MB/s", L"下载"},      // 下载
+    {0, L"", L"100%", Str::ItemUtil},
+    {0, L"", L"100°C", Str::ItemTemp},
+    {0, L"", L"8.88 GHz", Str::ItemFreq},
+    {0, L"", L"888 W", Str::ItemPower},
+    {1, L"", L"100%", Str::ItemUtil},
+    {1, L"", L"100°C", Str::ItemTemp},
+    {1, L"", L"8.88 GHz", Str::ItemFreq},
+    {1, L"", L"888 W", Str::ItemPower},
+    {2, L"", L"100%", Str::ItemMemUtil},
+    {2, L"", L"88.8 GB", Str::ItemMemUsed},
+    {3, L"↑", L"9.99 MB/s", Str::ItemUp},
+    {3, L"↓", L"9.99 MB/s", Str::ItemDown},
 };
 const wchar_t* const kGroupLabel[kNumGroups] = {L"CPU", L"GPU", L"RAM", L""};
-// CPU, GPU, 内存, 网络
-const wchar_t* const kGroupName[kNumGroups] = {L"CPU", L"GPU", L"内存", L"网络"};
+
+const wchar_t* GroupName(int g) {
+    switch (g) {
+        case 0: return L"CPU";
+        case 1: return L"GPU";
+        case 2: return T(Str::GroupMemory);
+        default: return T(Str::GroupNetwork);
+    }
+}
 
 DWORD g_items = kAllItems;  // bit per Item, persisted in the registry
 
@@ -235,10 +246,17 @@ void LoadSettings() {
     if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"Items", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS &&
         (v & kAllItems))
         g_items = v & kAllItems;
+    size = sizeof(v);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsKey, L"Language", RRF_RT_REG_DWORD, nullptr, &v, &size) != ERROR_SUCCESS ||
+        v > DWORD(Lang::English))
+        v = DWORD(Lang::Auto);
+    SetLang(Lang(v));
 }
 
 void SaveSettings() {
     RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"Items", REG_DWORD, &g_items, sizeof(g_items));
+    const DWORD lang = DWORD(GetLangPref());
+    RegSetKeyValueW(HKEY_CURRENT_USER, kSettingsKey, L"Language", REG_DWORD, &lang, sizeof(lang));
 }
 
 void ItemText(int item, const Metrics& m, wchar_t* b) {
@@ -526,7 +544,8 @@ void LayoutSettings(HWND hwnd, UINT dpi) {
     if (g_settingsFont) DeleteObject(g_settingsFont);
     g_settingsFont = CreateFontIndirectW(&ncm.lfMessageFont);
 
-    const int margin = S(12), boxW = S(400), checkW = S(88), checkH = S(22), boxH = S(52), gap = S(8);
+    // Wide enough for the English labels ("Temperature", "Utilization").
+    const int margin = S(12), boxW = S(440), checkW = S(104), checkH = S(22), boxH = S(52), gap = S(8);
     int y = margin;
     for (int g = 0; g < kNumGroups; ++g) {
         HWND box = GetDlgItem(hwnd, 10 + g);
@@ -557,16 +576,15 @@ LRESULT CALLBACK SettingsProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_CREATE: {
             auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
             for (int g = 0; g < kNumGroups; ++g)
-                CreateWindowExW(0, L"BUTTON", kGroupName[g], WS_CHILD | WS_VISIBLE | BS_GROUPBOX, 0, 0, 0, 0, hwnd,
+                CreateWindowExW(0, L"BUTTON", GroupName(g), WS_CHILD | WS_VISIBLE | BS_GROUPBOX, 0, 0, 0, 0, hwnd,
                                 reinterpret_cast<HMENU>(INT_PTR(10 + g)), cs->hInstance, nullptr);
             for (int i : kSettingsOrder) {
-                HWND cb = CreateWindowExW(0, L"BUTTON", kItems[i].name, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                HWND cb = CreateWindowExW(0, L"BUTTON", T(kItems[i].name), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
                                           0, 0, 0, 0, hwnd, reinterpret_cast<HMENU>(INT_PTR(ID_ITEM_BASE + i)),
                                           cs->hInstance, nullptr);
                 SendMessageW(cb, BM_SETCHECK, (g_items & (1u << i)) ? BST_CHECKED : BST_UNCHECKED, 0);
             }
-            // 勾选后立即生效；至少保留一项。
-            CreateWindowExW(0, L"STATIC", L"勾选后立即生效；至少保留一项。",
+            CreateWindowExW(0, L"STATIC", T(Str::SetHint),
                             WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hwnd, reinterpret_cast<HMENU>(INT_PTR(20)), cs->hInstance,
                             nullptr);
             LayoutSettings(hwnd, GetDpiForWindow(hwnd));
@@ -609,8 +627,7 @@ void ShowSettings() {
         SetForegroundWindow(g_settings);
         return;
     }
-    // 任务栏监控 - 显示项目
-    g_settings = CreateWindowExW(0, kSettingsClass, L"任务栏监控 - 显示项目",
+    g_settings = CreateWindowExW(0, kSettingsClass, T(Str::SetTitle),
                                  WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, 0, 100, 100,
                                  nullptr, nullptr, g_inst, nullptr);
     if (!g_settings) return;
@@ -703,36 +720,48 @@ RECT StripScreenRect(int left = -1, int right = -1) {
     return r;
 }
 
+RECT PanelAnchor(bool fromTray);
+void UpdateTray(bool add);
+
+void ApplyLanguage(Lang lang) {
+    SetLang(lang);
+    SaveSettings();
+    // Windows that baked in text: rebuild them in the new language.
+    panel::Close();
+    if (g_settings) {
+        DestroyWindow(g_settings);
+        ShowSettings();
+    }
+    UpdateTray(false);
+}
+
 void ShowMenu() {
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING, ID_DETAILS, L"性能详情");  // 性能详情
-    AppendMenuW(menu, MF_STRING, ID_TASKMGR, L"打开任务管理器");  // 打开任务管理器
-    AppendMenuW(menu, MF_STRING, ID_SETTINGS, L"显示项目…");  // 显示项目…
+    AppendMenuW(menu, MF_STRING, ID_DETAILS, T(Str::MenuDetails));
+    AppendMenuW(menu, MF_STRING, ID_TASKMGR, T(Str::MenuTaskMgr));
+    AppendMenuW(menu, MF_STRING, ID_SETTINGS, T(Str::MenuSettings));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     switch (g_hwState) {
-        case HwSensorState::NotInstalled:
-            // CPU 温度/功耗需要 PawnIO 驱动（打开下载页）
-            AppendMenuW(menu, MF_STRING, ID_PAWNIO,
-                        L"CPU 温度/功耗需要 PawnIO 驱动（打开下载页）");
-            break;
-        case HwSensorState::NeedsAdmin:
-            // 以管理员身份重启（显示 CPU 温度/功耗）
-            AppendMenuW(menu, MF_STRING, ID_ELEVATE,
-                        L"以管理员身份重启（显示 CPU 温度/功耗）");
-            break;
-        case HwSensorState::Unsupported:
-            // CPU 温度/功耗：此 CPU 暂不支持
-            AppendMenuW(menu, MF_STRING | MF_GRAYED, 0,
-                        L"CPU 温度/功耗：此 CPU 暂不支持");
-            break;
+        case HwSensorState::NotInstalled: AppendMenuW(menu, MF_STRING, ID_PAWNIO, T(Str::MenuPawnIo)); break;
+        case HwSensorState::NeedsAdmin: AppendMenuW(menu, MF_STRING, ID_ELEVATE, T(Str::MenuElevate)); break;
+        case HwSensorState::Unsupported: AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, T(Str::MenuUnsupported)); break;
         case HwSensorState::Ok: break;
     }
     const LONG autostart = InterlockedCompareExchange(&g_autostart, 0, 0);
-    // 开机自动启动
     AppendMenuW(menu, MF_STRING | (autostart == 1 ? MF_CHECKED : 0) | (autostart < 0 ? MF_GRAYED : 0), ID_AUTOSTART,
-                L"开机自动启动");
+                T(Str::MenuAutostart));
+
+    // Language names are shown in their own language so either is findable.
+    HMENU langMenu = CreatePopupMenu();
+    const Lang pref = GetLangPref();
+    AppendMenuW(langMenu, MF_STRING, ID_LANG_AUTO, T(Str::MenuLangAuto));
+    AppendMenuW(langMenu, MF_STRING, ID_LANG_ZH, L"简体中文");  // 简体中文
+    AppendMenuW(langMenu, MF_STRING, ID_LANG_EN, L"English");
+    CheckMenuRadioItem(langMenu, ID_LANG_AUTO, ID_LANG_EN, ID_LANG_AUTO + int(pref), MF_BYCOMMAND);
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(langMenu), T(Str::MenuLanguage));  // owned by menu now
+
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, ID_EXIT, L"退出");  // 退出
+    AppendMenuW(menu, MF_STRING, ID_EXIT, T(Str::MenuExit));
 
     POINT pt;
     GetCursorPos(&pt);
@@ -742,7 +771,10 @@ void ShowMenu() {
     PostMessageW(g_host, WM_NULL, 0, 0);
 
     switch (cmd) {
-        case ID_DETAILS: panel::Toggle(panel::Mode::Overview, StripScreenRect()); break;
+        case ID_DETAILS: panel::Toggle(panel::Mode::Overview, PanelAnchor(false)); break;
+        case ID_LANG_AUTO:
+        case ID_LANG_ZH:
+        case ID_LANG_EN: ApplyLanguage(Lang(cmd - ID_LANG_AUTO)); break;
         case ID_TASKMGR: RunAsync(OpenTaskManagerThread); break;
         case ID_SETTINGS: ShowSettings(); break;
         case ID_PAWNIO: RunAsync(OpenPawnIoSite); break;
@@ -776,11 +808,10 @@ void UpdateTray(bool add) {
     nid.uCallbackMessage = WM_APP_TRAY;
     const UINT dpi = g_taskbar ? GetDpiForWindow(g_taskbar) : 96;
     nid.hIcon = AppIcon(GetSystemMetricsForDpi(SM_CXSMICON, dpi ? dpi : 96));
-    // 任务栏性能监控 [+ 任务栏空间不足，指标条已暂时隐藏]
-    wcscpy(nid.szTip, g_stripHidden
-                          ? L"任务栏性能监控\n"
-                            L"任务栏空间不足，指标条已暂时隐藏"
-                          : L"任务栏性能监控");
+    if (g_stripHidden)
+        swprintf(nid.szTip, ARRAYSIZE(nid.szTip), L"%ls\n%ls", T(Str::AppName), T(Str::TrayHidden));
+    else
+        wcsncpy(nid.szTip, T(Str::AppName), ARRAYSIZE(nid.szTip) - 1);
     if (add || !g_trayAdded) {
         Shell_NotifyIconW(NIM_DELETE, &nid);  // after an explorer restart the old entry is gone anyway
         g_trayAdded = Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
@@ -838,6 +869,10 @@ LRESULT CALLBACK HostProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     if (msg == g_msgShow && msg) {  // "/show [network]" from another instance, e.g. bound to a hotkey
         panel::Toggle(wp ? panel::Mode::Network : panel::Mode::Overview, PanelAnchor(false));
+        return 0;
+    }
+    if (msg == g_msgLang && msg) {  // "/lang auto|zh|en" from another instance
+        if (wp <= WPARAM(Lang::English)) ApplyLanguage(Lang(wp));
         return 0;
     }
     if (msg == g_msgShellHook && msg) {
@@ -1017,6 +1052,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
         }
         return 0;
     }
+    g_msgLang = RegisterWindowMessageW(L"TaskbarMonitor.Language");
+    if (const wchar_t* lang = wcsstr(cmdLine, L"/lang")) {  // switch the running instance's language
+        const Lang l = wcsstr(lang, L"en") ? Lang::English : wcsstr(lang, L"zh") ? Lang::Chinese : Lang::Auto;
+        if (HWND running = FindWindowW(kHostClass, nullptr)) PostMessageW(running, g_msgLang, WPARAM(l), 0);
+        return 0;
+    }
     const bool replace = wcsstr(cmdLine, L"/replace") != nullptr;
     const bool takeOver = replace || wcsstr(cmdLine, L"/restart") != nullptr;
     if (replace)
@@ -1071,6 +1112,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
     ChangeWindowMessageFilterEx(g_host, WM_SETTINGCHANGE, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(g_host, g_msgQuit, MSGFLT_ALLOW, nullptr);
     ChangeWindowMessageFilterEx(g_host, g_msgShow, MSGFLT_ALLOW, nullptr);
+    ChangeWindowMessageFilterEx(g_host, g_msgLang, MSGFLT_ALLOW, nullptr);
     g_msgShellHook = RegisterWindowMessageW(L"SHELLHOOK");
     ChangeWindowMessageFilterEx(g_host, g_msgShellHook, MSGFLT_ALLOW, nullptr);
     RegisterShellHookWindow(g_host);

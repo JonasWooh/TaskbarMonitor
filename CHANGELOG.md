@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 — 2026-10-03
+
+- English and Simplified Chinese UI: follows the Windows display language, or pick one via right-click → Language / 语言; switches live and is remembered.
+- `/lang en|zh|auto` command-line switch.
+
 ## 1.1.0 — 2026-10-03
 
 - Details flyout (left click): CPU with per-logical-processor load, GPU with VRAM, memory with commit charge, disk read/write and network, each with 60-second history; light/dark theme and accent color.
